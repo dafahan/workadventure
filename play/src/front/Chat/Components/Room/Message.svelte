@@ -196,6 +196,7 @@
                     ? 'bg-secondary/90 rounded-br-none'
                     : ''}
                     {$reactionsWithUsers.length > 0 && !$isDeleted && replyDepth === 0 ? 'mb-4 p-0.5' : ''}
+                    {$content.mentionsMe && !$isDeleted && replyDepth === 0 ? 'ring-2 ring-danger' : ''}
                     {!isQuotedMessage ? 'my' : ''}"
             >
                 {#if $isDeleted}

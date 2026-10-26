@@ -18,7 +18,9 @@
     let roomName = $derived(room.name);
     let roomKind = $derived(room.kind);
     let hasUnreadMessages = $derived(room.hasUnreadMessages);
-    let unreadCount = $derived(room.unreadMessagesCount);
+    // unreadMessagesCount only counts while the chat is intentionally closed: it showed 0 next to unread messages.
+    let unreadCount = $derived(room.unreadNotificationCount);
+    let hasUnreadMentions = $derived(room.hasUnreadMentions);
 
     let usesDefaultProximityPicture = $derived($roomKind === "default" || $roomKind === "proximity");
     let RoomIcon = $derived(
@@ -99,7 +101,9 @@
             <span class="absolute top-2 start-2 block h-4 w-4 rounded-full bg-white animate-ping"></span>
             <span class="absolute top-2.5 start-2.5 block h-3 w-3 rounded-full bg-white"></span>
             <div
-                class="flex aspect-square h-5 w-5 items-center justify-center rounded-full bg-success text-sm font-bold leading-none text-contrast z-10"
+                class="flex aspect-square h-5 w-5 items-center justify-center rounded-full {$hasUnreadMentions
+                    ? 'bg-danger text-white'
+                    : 'bg-success text-contrast'} text-sm font-bold leading-none z-10"
                 aria-label={$LL.chat.a11y.unreadCount({ count: $unreadCount })}
             >
                 <span>{$unreadCount > 9 ? "9" : $unreadCount}</span>

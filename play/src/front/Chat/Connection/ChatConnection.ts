@@ -5,6 +5,7 @@ import type { MatrixClient, StateEvents } from "matrix-js-sdk";
 import type { WorkAdventureComponent, WorkAdventureComponentProps } from "../../../types/component";
 import type { RoomConnection } from "../../Connection/RoomConnection";
 import type { PictureStore } from "../../Stores/PictureStore";
+import type { MentionCandidate } from "../Mentions";
 
 export type memberTypingInformation = { id: string; name: string | null; pictureStore: PictureStore };
 export type ChatUser = {
@@ -119,6 +120,8 @@ export interface ChatConversation {
     readonly parentRoom?: ChatRoom;
     readonly hasUnreadMessages: Readable<boolean>;
     readonly unreadNotificationCount: Readable<number>;
+    /** Some unread message mentions the current user: the unread badge takes the mention color. */
+    readonly hasUnreadMentions?: Readable<boolean>;
     readonly initializationState: Readable<ChatRoomInitializationState>;
     readonly initializationError?: Readable<Error | undefined>;
     readonly ensureInitialized: () => Promise<void>;
@@ -138,6 +141,8 @@ export interface ChatConversation {
     readonly messages: Readable<readonly ChatMessage[]>;
     readonly timelineItems: Readable<readonly ChatTimelineItem[]>;
     readonly sendMessage: (message: string) => void;
+    /** Who the composer offers to mention after an "@". Only subscribed to once an "@" is typed. */
+    readonly mentionCandidates?: Readable<readonly MentionCandidate[]>;
     readonly sendFiles: (files: FileList) => Promise<void>;
     readonly canSendMessages?: Readable<boolean>;
     readonly canSendReactions?: Readable<boolean>;
@@ -284,6 +289,7 @@ export type ChatThreadSummary = {
     lastActivityTimestamp: number;
     hasUnreadMessages: boolean;
     unreadNotificationCount: number;
+    hasUnreadMentions: boolean;
     isDegraded?: boolean;
     degradedReason?: "root_missing";
 };
@@ -469,6 +475,10 @@ export type ChatMessageContent = {
     body: string;
     url: string | undefined;
     thumbnailUrl?: string;
+    /** HTML rendered instead of the body, when the message holds mention pills. Run against DOMPurify too. */
+    formattedBody?: string;
+    /** The message mentions the current user (by name, or the whole room). */
+    mentionsMe?: boolean;
 };
 export const historyVisibilityOptions = ["joined", "invited", "world_readable"] as const;
 export type historyVisibility = (typeof historyVisibilityOptions)[number];

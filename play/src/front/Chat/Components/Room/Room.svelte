@@ -25,6 +25,7 @@
     let roomType = $derived(room.type);
     let hasUnreadMessage = $derived(room.hasUnreadMessages);
     let roomUnreadCount = $derived(room.unreadNotificationCount);
+    let hasUnreadMentions = $derived(room.hasUnreadMentions);
     let roomName = $derived(room.name);
     let isEncrypted = $derived(room.isEncrypted);
     let areNotificationsMuted = $derived(room.areNotificationsMuted);
@@ -97,7 +98,9 @@
             <span class="absolute top-2 start-2 block h-4 w-4 rounded-full bg-white animate-ping"></span>
             <span class="absolute top-2.5 start-2.5 block h-3 w-3 rounded-full bg-white"></span>
             <div
-                class="flex aspect-square h-5 w-5 items-center justify-center rounded-full bg-success text-sm font-bold leading-none text-contrast z-10"
+                class="flex aspect-square h-5 w-5 items-center justify-center rounded-full {$hasUnreadMentions
+                    ? 'bg-danger text-white'
+                    : 'bg-success text-contrast'} text-sm font-bold leading-none z-10"
                 aria-label={$LL.chat.a11y.unreadCount({ count: $roomUnreadCount })}
             >
                 <span>{$roomUnreadCount > 9 ? "9" : $roomUnreadCount}</span>
