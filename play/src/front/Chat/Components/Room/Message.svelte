@@ -31,7 +31,7 @@
     import MessageOutcoming from "./Message/MessageOutcoming.svelte";
     import Message from "./Message.svelte";
     import ThreadSummary from "./ThreadSummary.svelte";
-    import { IconTrash } from "@wa-icons";
+    import { IconAt, IconTrash } from "@wa-icons";
 
     interface Props {
         message: ChatMessage;
@@ -68,6 +68,9 @@
     } = $derived(message);
 
     let messageFromSystem = $derived(type === "incoming" || type === "outcoming");
+    let mentionsMe = $derived(!isMyMessage && $content.mentionsMe === true);
+    // A message that mentions us always shows who wrote it, and says so, even in a run of messages from one sender.
+    let showSenderHeader = $derived(showHeader || mentionsMe);
 
     const messageType: { [key in ChatMessageType]: WorkAdventureComponent } = {
         image: MessageImage,
@@ -144,7 +147,7 @@
             ? 'justify-end grid-container-inverted pr-4'
             : 'justify-start pl-3'}"
     >
-        {#if (!isMyMessage || isQuotedMessage) && sender !== undefined && replyDepth === 0 && showHeader}
+        {#if (!isMyMessage || isQuotedMessage) && sender !== undefined && replyDepth === 0 && showSenderHeader}
             <AvatarBox class="overflow-hidden mt-4 shrink-0">
                 <Avatar
                     compact
@@ -159,24 +162,35 @@
              Our own messages never show an avatar, so they have no column to keep. -->
         <div
             class="flex flex-col justify-end max-w-full {replyDepth === 0 &&
-            !showHeader &&
+            !showSenderHeader &&
             (!isMyMessage || isQuotedMessage)
                 ? 'ml-12'
                 : ''}"
         >
-            {#if replyDepth <= 0 && showHeader}
+            {#if replyDepth <= 0 && showSenderHeader}
                 <div
                     class="w-full h-fit text-xs px-2 flex justify-between items-end gap-2 overflow-x-hidden"
                     class:flex-row-reverse={isMyMessage}
                     hidden={isQuotedMessage || messageFromSystem}
                 >
-                    <span
-                        hidden={messageFromSystem}
-                        class="text-nowrap text-sm font-bold {!isMyMessage ? 'text-white' : 'text-white/75'}"
-                        >{isMyMessage ? $LL.chat.you() : sender?.username}{#if waDisplayNameParens}<span
-                                class="text-xs font-normal opacity-75 ml-0.5">({waDisplayNameParens})</span
-                            >{/if}</span
-                    >
+                    <span class="flex min-w-0 items-center gap-2">
+                        <span
+                            hidden={messageFromSystem}
+                            class="text-nowrap text-sm font-bold {!isMyMessage ? 'text-white' : 'text-white/75'}"
+                            >{isMyMessage ? $LL.chat.you() : sender?.username}{#if waDisplayNameParens}<span
+                                    class="text-xs font-normal opacity-75 ml-0.5">({waDisplayNameParens})</span
+                                >{/if}</span
+                        >
+                        {#if mentionsMe}
+                            <span
+                                class="flex items-center gap-1 text-nowrap text-xs font-medium text-danger-500"
+                                data-testid="messageMentionsMe"
+                            >
+                                <IconAt font-size={14} />
+                                {$LL.chat.mention.mentionedYou()}
+                            </span>
+                        {/if}
+                    </span>
                     <span class={`text-xs font-condensed text-nowrap opacity-75 ${isMyMessage ? "mr-1" : "ml-1"}`}
                         >{date?.toLocaleTimeString($locale, {
                             hour: "2-digit",
@@ -196,7 +210,6 @@
                     ? 'bg-secondary/90 rounded-br-none'
                     : ''}
                     {$reactionsWithUsers.length > 0 && !$isDeleted && replyDepth === 0 ? 'mb-4 p-0.5' : ''}
-                    {$content.mentionsMe && !$isDeleted && replyDepth === 0 ? 'ring-2 ring-danger' : ''}
                     {!isQuotedMessage ? 'my' : ''}"
             >
                 {#if $isDeleted}

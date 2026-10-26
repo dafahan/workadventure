@@ -102,7 +102,7 @@
             <span class="absolute top-2.5 start-2.5 block h-3 w-3 rounded-full bg-white"></span>
             <div
                 class="flex aspect-square h-5 w-5 items-center justify-center rounded-full {$hasUnreadMentions
-                    ? 'bg-danger text-white'
+                    ? 'bg-danger-1000 text-white'
                     : 'bg-success text-contrast'} text-sm font-bold leading-none z-10"
                 aria-label={$LL.chat.a11y.unreadCount({ count: $unreadCount })}
             >
