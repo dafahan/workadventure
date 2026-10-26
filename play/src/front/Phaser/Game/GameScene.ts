@@ -121,6 +121,7 @@ import {
     requestedMicrophoneState,
     speakerSelectedStore,
 } from "../../Stores/MediaStore";
+import { devicesToOffer } from "../../Stores/AudioOutputStore";
 import NoMicrophoneSoundToast from "../../Components/Toasts/NoMicrophoneSoundToast.svelte";
 import LoudEnvironmentToast from "../../Components/Toasts/LoudEnvironmentToast.svelte";
 import { LL, locale } from "../../../i18n/i18n-svelte";
@@ -180,6 +181,7 @@ import {
 } from "../../Chat/Connection/Proximity/ProximityChatRoomManager";
 import { ProximitySpaceManager } from "../../WebRtc/ProximitySpaceManager";
 import { audioContextManager } from "../../WebRtc/AudioContextManager";
+import { bindAudioOutput, pendingSinkRequests } from "../../WebRtc/AudioOutputManager";
 import { noMicrophoneSoundWarningVisibleStore } from "../../Stores/NoMicrophoneSoundWarningVisibleStore";
 import type { SpaceRegistryInterface } from "../../Space/SpaceRegistry/SpaceRegistryInterface";
 import { WorldUserProvider } from "../../Chat/UserProvider/WorldUserProvider";
@@ -529,6 +531,11 @@ export class GameScene extends DirtyScene {
         this.load.audio("meeting-out", "/resources/objects/meeting-out.wav");
 
         this.sound.pauseOnBlur = false;
+        // Bubble, meeting and scripting API sounds play through Phaser's own AudioContext (absent when Phaser falls back
+        // to HTML5 audio), bypassing media elements: it follows the selected audio output itself.
+        if (this.sound instanceof Phaser.Sound.WebAudioSoundManager) {
+            this.unsubscribers.push(bindAudioOutput(this.sound.context));
+        }
 
         this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: { src: string }) => {
             // If we happen to be in HTTP and we are trying to load a URL in HTTPS only... (this happens only in dev environments)
@@ -1012,6 +1019,10 @@ export class GameScene extends DirtyScene {
                                 gameSceneIsLoadedStore.set(true);
                                 this.sceneReadyToStartDeferred.resolve();
                                 this.initializeAreaManager();
+                                // #moveTo walks the player along a path: it needs the player (created when the pusher
+                                // answered) and the areas the user cannot enter in the collision grid, which only
+                                // exist once the areas manager is initialized.
+                                this.tryMovePlayerWithMoveToParameter();
                             })
                             .catch((e) => {
                                 if (e instanceof CloseEvent) {
@@ -1157,6 +1168,7 @@ export class GameScene extends DirtyScene {
                 this.mapFile,
                 undefined,
                 urlManager.getStartPositionNameFromUrl(),
+                (position) => this.isPositionAllowedForCurrentUser(position),
             );
             this.CurrentPlayer.setPosition(startPosition.x, startPosition.y);
             this.CurrentPlayer.finishFollowingPath(true);
@@ -2005,6 +2017,19 @@ export class GameScene extends DirtyScene {
         }
     }
 
+    /**
+     * Whether the current user may stand at this position, i.e. it is not inside an area they do not have access to.
+     * Like AreaPermissions, users allowed to edit the map may go anywhere. Unlike the areas manager, this works as soon
+     * as the pusher answered, which is when the start position is chosen.
+     */
+    private isPositionAllowedForCurrentUser(position: PositionInterface): boolean {
+        const gameMapAreas = this.getGameMap().getWamFile()?.getGameMapAreas();
+        if (!this.connection || this.connection.userCanEdit || !gameMapAreas) {
+            return true;
+        }
+        return gameMapAreas.getForbiddenAreasOnPosition(position, this.connection.getAllTags()).length === 0;
+    }
+
     private initializeAreaManager() {
         if (!this.connection) {
             throw new Error("This should never happen");
@@ -2086,15 +2111,13 @@ export class GameScene extends DirtyScene {
                     this.mapFile,
                     this.initPosition,
                     urlManager.getStartPositionNameFromUrl(),
+                    (position) => this.isPositionAllowedForCurrentUser(position),
                 );
 
                 this.createCurrentPlayer(startPosition);
 
                 this.activatablesManager = new ActivatablesManager(this.CurrentPlayer);
                 this.cameraManager.startFollowPlayer(this.CurrentPlayer, 0);
-
-                // #moveTo walks the player: it must exist, so this cannot run before the pusher answers.
-                this.tryMovePlayerWithMoveToParameter();
 
                 this.mapEditorModeManager?.subscribeToRoomConnection(this.connection);
 
@@ -2302,16 +2325,27 @@ export class GameScene extends DirtyScene {
 
                 const context = audioContextManager.getContext();
 
+                let previousState: AudioContextState | undefined;
                 const onStateChange = () => {
                     const state = context.state;
+                    const wasRunning = previousState === "running";
+                    previousState = state;
 
                     // Note: some browsers (Vivaldi / Brave) will start in "running" state directly despite
                     // no user activation and this will not stop them from blocking WebRTC sound afterwards.
                     if (state === "suspended") {
                         audioInterruptedStore.setInterrupted(false);
-                        this.unregisterAudioContextPlaybackRetry = audioPlaybackStore.register(() => {
-                            context.resume().catch((e) => console.error(e));
-                        });
+                        const outputSwitch = wasRunning ? pendingSinkRequests(context) : undefined;
+                        if (outputSwitch) {
+                            // Chrome suspends a running context while it switches the audio output, and resumes it
+                            // after. Not blocked playback: flagging it sets the SOUND_BLOCKED status, which leaves the
+                            // bubble. Resumed here too, in case the switch failed half way.
+                            outputSwitch.then(() => context.resume()).catch((e) => console.error(e));
+                        } else {
+                            this.unregisterAudioContextPlaybackRetry = audioPlaybackStore.register(() => {
+                                context.resume().catch((e) => console.error(e));
+                            });
+                        }
                     } else if (state === "running") {
                         this.unregisterAudioContextPlaybackRetry?.();
                         this.unregisterAudioContextPlaybackRetry = undefined;
@@ -2790,7 +2824,9 @@ export class GameScene extends DirtyScene {
         );
 
         this.unsubscribers.push(
-            lastNewMediaDeviceDetectedStore.subscribe((devices) => {
+            lastNewMediaDeviceDetectedStore.subscribe((newDevices) => {
+                // Filtered first: the click handler below picks devices by label from this same list
+                const devices = devicesToOffer(newDevices);
                 if (devices.length === 0) return;
                 const ignoredNewMediaDeviceIds = localUserStore.getIgnoredNewMediaDeviceIds();
                 // filter device by name tu avoid multiple notification for the same device
@@ -2877,7 +2913,7 @@ export class GameScene extends DirtyScene {
             }),
         );
 
-        this.isLiveStreamingUnsubscriber = this.spaceRegistry.isLiveStreamingStore.subscribe((isStreaming) => {
+        this.isLiveStreamingUnsubscriber = this.spaceRegistry.isLiveStreamingAudioStore.subscribe((isStreaming) => {
             if (isStreaming) {
                 this.enableVoiceIndicator();
             } else {
@@ -3696,6 +3732,12 @@ ${escapedMessage}
         });
 
         iframeListener.registerAnswerer("teleportPlayerTo", (message) => {
+            // Teleporting skips the colliders: check the access rights of the areas at the destination ourselves.
+            if (!this.isPositionAllowedForCurrentUser(message)) {
+                throw new Error(
+                    "WA.player.teleport: the target position is inside an area the user does not have access to.",
+                );
+            }
             this.CurrentPlayer.teleportTo(message.x, message.y);
         });
 

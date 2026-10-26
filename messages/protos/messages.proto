@@ -465,6 +465,14 @@ message UploadEntityMessage {
   optional string ownerId = 10;
 }
 
+// What an uploaded file is for, which decides where map-storage stores it and which formats it accepts.
+enum UploadedFileKind {
+  // A file of the "open file" property, stored privately.
+  Document = 0;
+  // A sound of the "play audio" property, stored as a public map asset.
+  Sound = 1;
+}
+
 message UploadFileMessage {
   bytes file = 1;
   string id = 2;
@@ -472,6 +480,7 @@ message UploadFileMessage {
   string propertyId = 4;
   optional string areaId = 5;
   optional string entityId = 6;  
+  UploadedFileKind kind = 7;
 }
 
 message ModifyCustomEntityMessage {
@@ -1276,6 +1285,9 @@ message GroupUsersUpdateMessage {
 message RoomConnectedMessage {
   EditMapCommandsArrayMessage editMapCommandsArrayMessage = 13;
   repeated string tag = 5;
+  // Also in RoomJoinedMessage, but the start position (which must avoid the areas the user cannot enter, unless they
+  // can edit the map) is chosen before the room is joined.
+  bool canEdit = 14;
 }
 
 message RoomJoinedMessage {
@@ -1547,7 +1559,18 @@ message BackEventMessage {
 message BackEvent {
   oneof event {
     MeetingConnectionRestartMessage meetingConnectionRestartMessage = 2;
+    MicrophoneTrackPublishedMessage microphoneTrackPublishedMessage = 3;
   }
+}
+
+// Names the sender's microphone among its LiveKit publications (the scripting audio is published as a microphone
+// too). Sent on every microphone publication; the back uses it when the space is recorded automatically.
+message MicrophoneTrackPublishedMessage {
+  string trackSid = 1;
+  // The browser's language (navigator.language).
+  string language = 2;
+  // The noise suppression applied before publishing: "workadventure", "voiceIsolation" or "none".
+  string noiseSuppression = 3;
 }
 
 message PrivateEvent {
@@ -1658,6 +1681,7 @@ message ConnectToRoomMessage {
   string roomId = 1;
   google.protobuf.StringValue lastCommandId = 2;
   repeated string tag = 3;
+  bool canEdit = 4;
 }
 
 /**
